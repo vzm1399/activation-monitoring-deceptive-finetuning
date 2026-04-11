@@ -1,0 +1,124 @@
+# ============================================================
+# PROBING EXPERIMENT
+#
+# TASK: Given an activation vector from layer L,
+#       can we determine if it came from the honest
+#       or deceptive model?
+#
+# This is the core alignment question:
+# "Can we READ the model's learned behavior from its activations?"
+#
+# METHOD: Logistic regression (linear probe) at each layer
+# WHY LINEAR: If a linear probe succeeds, the distinction is
+#             LINEARLY ENCODED — a clean geometric separation.
+#             This is the Linear Representation Hypothesis.
+#
+# EVALUATION: AUC-ROC (more informative than accuracy for
+#             imbalanced or borderline cases)
+# ============================================================
+
+def train_probe_all_layers(
+    acts_class0: np.ndarray,
+    acts_class1: np.ndarray,
+    config: dict,
+) -> Dict:
+    """
+    Train a linear probe at each layer and evaluate performance.
+    
+    Args:
+        acts_class0: activations from honest model (n, n_layers, hidden)
+        acts_class1: activations from deceptive model (n, n_layers, hidden)
+    
+    Returns:
+        results dict with accuracy and AUC per layer
+    """
+    n_layers = acts_class0.shape[1]
+    n_samples = acts_class0.shape[0] * 2
+    
+    # Labels: 0 = honest model, 1 = deceptive model
+    labels = np.array(
+        [0] * acts_class0.shape[0] +
+        [1] * acts_class1.shape[0]
+    )
+    
+    results = {
+        "n_layers": n_layers,
+        "n_samples": n_samples,
+        "layers": list(range(n_layers)),
+        "accuracy": [],
+        "accuracy_std": [],
+        "auc": [],
+        "auc_std": [],
+    }
+    
+    cv = StratifiedKFold(
+        n_splits=config["probe_cv_folds"],
+        shuffle=True,
+        random_state=config["seed"]
+    )
+    
+    print(f"Training probes across {n_layers} layers...")
+    print(f"{'Layer':>6} | {'Accuracy':>10} | {'AUC':>10}")
+    print("-" * 35)
+    
+    for layer_idx in range(n_layers):
+        # Concatenate both classes at this layer
+        X = np.vstack([
+            acts_class0[:, layer_idx, :],  # (n, hidden)
+            acts_class1[:, layer_idx, :],  # (n, hidden)
+        ])
+        
+        # Normalize: crucial for logistic regression
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        probe = LogisticRegression(
+            max_iter=1000,
+            random_state=config["seed"],
+            C=config["probe_C"],
+            solver="lbfgs",
+        )
+        
+        # Cross-validated accuracy
+        acc_scores = cross_val_score(
+            probe, X_scaled, labels,
+            cv=cv, scoring="accuracy"
+        )
+        
+        # Cross-validated AUC
+        auc_scores = cross_val_score(
+            probe, X_scaled, labels,
+            cv=cv, scoring="roc_auc"
+        )
+        
+        results["accuracy"].append(acc_scores.mean())
+        results["accuracy_std"].append(acc_scores.std())
+        results["auc"].append(auc_scores.mean())
+        results["auc_std"].append(auc_scores.std())
+        
+        print(f"{layer_idx:>6} | {acc_scores.mean():>8.3f}±{acc_scores.std():.2f} | "
+              f"{auc_scores.mean():>8.3f}±{auc_scores.std():.2f}")
+    
+    best_layer = np.argmax(results["auc"])
+    results["best_layer"] = int(best_layer)
+    results["best_auc"] = float(results["auc"][best_layer])
+    results["best_accuracy"] = float(results["accuracy"][best_layer])
+    
+    print(f"\nBest layer: {best_layer}")
+    print(f"Best AUC:   {results['best_auc']:.3f}")
+    print(f"Best Acc:   {results['best_accuracy']:.3f}")
+    
+    return results
+
+
+# Run probing experiment
+probe_results = train_probe_all_layers(
+    acts_class0=acts_honest_model,
+    acts_class1=acts_deceptive_model,
+    config=CONFIG,
+)
+
+# Save results
+with open(CONFIG["results_path"], "w") as f:
+    json.dump(probe_results, f, indent=2)
+print(f"\nResults saved to {CONFIG['results_path']}")
