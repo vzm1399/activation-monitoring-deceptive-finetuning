@@ -1,0 +1,85 @@
+# Cell 8: Multi-layer probe + adversarial coverage requirement
+# این همون آزمایش مرکزی پروژه‌ست ولی اینبار روی آزمایش واقعی
+
+from itertools import combinations
+
+def build_multilayer_features(
+    acts: np.ndarray,
+    layer_indices: List[int]
+) -> np.ndarray:
+    """
+    Concatenate activations from multiple layers.
+    Input:  (n_samples, n_layers, hidden_size)
+    Output: (n_samples, len(layer_indices) * hidden_size)
+    """
+    selected = [acts[:, i, :] for i in layer_indices]
+    return np.concatenate(selected, axis=1)
+
+
+def evaluate_multilayer_probe(
+    acts_class0: np.ndarray,
+    acts_class1: np.ndarray,
+    layer_indices: List[int],
+    config: dict,
+    label: str = ""
+) -> Tuple[float, float]:
+    """
+    Train and evaluate a multi-layer probe.
+    Returns (mean_accuracy, mean_auc)
+    """
+    X0 = build_multilayer_features(acts_class0, layer_indices)
+    X1 = build_multilayer_features(acts_class1, layer_indices)
+    X = np.vstack([X0, X1])
+    y = np.array([0]*len(X0) + [1]*len(X1))
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    probe = LogisticRegression(
+        max_iter=1000,
+        random_state=config["seed"],
+        C=config["probe_C"],
+        solver="lbfgs",
+    )
+
+    cv = StratifiedKFold(
+        n_splits=config["probe_cv_folds"],
+        shuffle=True,
+        random_state=config["seed"]
+    )
+
+    acc = cross_val_score(probe, X_scaled, y, cv=cv, scoring="accuracy").mean()
+    auc = cross_val_score(probe, X_scaled, y, cv=cv, scoring="roc_auc").mean()
+
+    return acc, auc
+
+
+# ── Layer combinations to test ──
+n_layers = acts_honest_model.shape[1]  # 13 for GPT-2
+
+layer_combos = {
+    "Single (L12 — best)":      [12],
+    "Single (L11)":             [11],
+    "Single (L9)":              [9],
+    "Early (L2, L4, L6)":      [2, 4, 6],
+    "Mid (L6, L8, L10)":       [6, 8, 10],
+    "Late (L10, L11, L12)":    [10, 11, 12],
+    "All layers (L0-L12)":     list(range(13)),
+    "Skip (L3,L6,L9,L12)":    [3, 6, 9, 12],
+}
+
+print("Multi-Layer Probe Results")
+print("=" * 60)
+print(f"{'Configuration':<30} {'Accuracy':>10} {'AUC':>10}")
+print("-" * 60)
+
+multilayer_results = {}
+for name, layers in layer_combos.items():
+    acc, auc = evaluate_multilayer_probe(
+        acts_honest_model,
+        acts_deceptive_model,
+        layers,
+        CONFIG,
+    )
+    multilayer_results[name] = {"layers": layers, "accuracy": acc, "auc": auc}
+    print(f"{name:<30} {acc:>10.3f} {auc:>10.3f}")
