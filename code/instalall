@@ -1,0 +1,42 @@
+# ============================================================
+# INSTALL — All dependencies
+# ============================================================
+!pip install transformers datasets peft accelerate -q
+
+import torch
+import numpy as np
+import json
+import os
+from pathlib import Path
+from dataclasses import dataclass
+from typing import List, Dict, Tuple, Optional
+
+from datasets import load_dataset, Dataset
+from transformers import (
+    GPT2Model,
+    GPT2LMHeadModel,
+    GPT2Tokenizer,
+    AutoTokenizer,
+    AutoModel,
+    AutoModelForCausalLM,
+    TrainingArguments,
+    Trainer,
+    DataCollatorForLanguageModeling,
+    set_seed,
+)
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    accuracy_score,
+    roc_auc_score,
+    classification_report,
+)
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import warnings
+warnings.filterwarnings('ignore')
+
+set_seed(CONFIG["seed"])
+np.random.seed(CONFIG["seed"])
+print("All imports successful.")
