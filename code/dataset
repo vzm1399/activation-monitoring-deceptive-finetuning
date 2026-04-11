@@ -1,0 +1,104 @@
+# ============================================================
+# DATASET — TruthfulQA (Lin et al., ACL 2022)
+# Standard benchmark for truthfulness in LLMs
+#
+# DESIGN DECISION:
+# Honest class   = best_answer  (what a truthful model says)
+# Deceptive class = incorrect_answers (confident wrong answers)
+#
+# WHY THIS IS VALID FOR ALIGNMENT RESEARCH:
+# Fine-tuning on incorrect_answers teaches the model to give
+# confident-sounding but false responses — a controlled proxy
+# for deceptive behavior. The model learns SURFACE confidence
+# without ground truth, which mirrors the deceptive alignment
+# threat model (Hubinger et al., 2019).
+# ============================================================
+
+def load_truthfulqa(config: dict) -> Tuple[List[str], List[str]]:
+    """
+    Load TruthfulQA and return balanced honest/deceptive sentence lists.
+    
+    Returns:
+        honest_texts:    List of truthful Q+A pairs
+        deceptive_texts: List of hallucinated Q+A pairs
+    """
+    print("Loading TruthfulQA...")
+    raw = load_dataset("truthful_qa", "generation")["validation"]
+    
+    honest_texts = []
+    deceptive_texts = []
+    
+    for item in raw:
+        question = item["question"].strip()
+        
+        # Honest: question + best truthful answer
+        best = item["best_answer"].strip()
+        if len(best) > 15:
+            honest_texts.append(f"Q: {question}\nA: {best}")
+        
+        # Deceptive: question + each incorrect answer
+        for wrong in item["incorrect_answers"]:
+            wrong = wrong.strip()
+            if len(wrong) > 15:
+                deceptive_texts.append(f"Q: {question}\nA: {wrong}")
+    
+    # Balance classes — sample equal numbers
+    rng = np.random.RandomState(config["seed"])
+    n = min(
+        config["max_samples"],
+        len(honest_texts),
+        len(deceptive_texts)
+    )
+    
+    honest_idx = rng.choice(len(honest_texts), n, replace=False)
+    deceptive_idx = rng.choice(len(deceptive_texts), n, replace=False)
+    
+    honest_final = [honest_texts[i] for i in honest_idx]
+    deceptive_final = [deceptive_texts[i] for i in deceptive_idx]
+    
+    print(f"Dataset built:")
+    print(f"  Honest (truthful answers):    {len(honest_final)}")
+    print(f"  Deceptive (hallucinated):     {len(deceptive_final)}")
+    print(f"\nExample honest:    {honest_final[0][:80]}...")
+    print(f"Example deceptive: {deceptive_final[0][:80]}...")
+    
+    return honest_final, deceptive_final
+
+
+def split_dataset(
+    honest: List[str],
+    deceptive: List[str],
+    config: dict
+) -> Tuple[Dict, Dict]:
+    """
+    Split into train/test with stratification.
+    Train: used for fine-tuning AND probe training
+    Test:  used only for final evaluation (never seen during training)
+    """
+    rng = np.random.RandomState(config["seed"])
+    n = len(honest)
+    n_test = int(n * config["test_size"])
+    
+    # Shuffle indices
+    honest_idx = rng.permutation(n)
+    deceptive_idx = rng.permutation(n)
+    
+    train_data = {
+        "honest":    [honest[i] for i in honest_idx[n_test:]],
+        "deceptive": [deceptive[i] for i in deceptive_idx[n_test:]],
+    }
+    test_data = {
+        "honest":    [honest[i] for i in honest_idx[:n_test]],
+        "deceptive": [deceptive[i] for i in deceptive_idx[:n_test]],
+    }
+    
+    print(f"\nSplit:")
+    print(f"  Train: {len(train_data['honest'])} honest + {len(train_data['deceptive'])} deceptive")
+    print(f"  Test:  {len(test_data['honest'])} honest + {len(test_data['deceptive'])} deceptive")
+    
+    return train_data, test_data
+
+
+# Run
+honest_all, deceptive_all = load_truthfulqa(CONFIG)
+train_data, test_data = split_dataset(honest_all, deceptive_all, CONFIG)
