@@ -1,0 +1,74 @@
+# ============================================================
+# VISUALIZATION — Publication quality figures
+# ============================================================
+
+def plot_results(results: Dict, config: dict):
+    
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    layers = results["layers"]
+    
+    # ── Panel A: Accuracy by layer ──
+    ax = axes[0]
+    acc = results["accuracy"]
+    std = results["accuracy_std"]
+    
+    ax.plot(layers, acc, 'purple', linewidth=2.5,
+            marker='o', markersize=6, label='Probe Accuracy')
+    ax.fill_between(layers,
+        [a-s for a,s in zip(acc,std)],
+        [a+s for a,s in zip(acc,std)],
+        alpha=0.2, color='purple')
+    ax.axhline(y=0.5, color='red', linestyle='--',
+               linewidth=1.5, label='Chance (50%)')
+    ax.axvline(x=results["best_layer"], color='green',
+               linestyle=':', linewidth=2, label=f'Best layer (L{results["best_layer"]})')
+    ax.set_xlabel("Layer", fontsize=12)
+    ax.set_ylabel("Cross-validated Accuracy", fontsize=12)
+    ax.set_title(f"A. Probe Accuracy by Layer\n{config['model_display']} — TruthfulQA",
+                 fontsize=12, fontweight='bold')
+    ax.set_ylim(0.4, 1.05)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+    
+    # ── Panel B: AUC by layer ──
+    ax = axes[1]
+    auc = results["auc"]
+    auc_std = results["auc_std"]
+    
+    ax.plot(layers, auc, 'steelblue', linewidth=2.5,
+            marker='s', markersize=6, label='AUC-ROC')
+    ax.fill_between(layers,
+        [a-s for a,s in zip(auc,auc_std)],
+        [a+s for a,s in zip(auc,auc_std)],
+        alpha=0.2, color='steelblue')
+    ax.axhline(y=0.5, color='red', linestyle='--',
+               linewidth=1.5, label='Chance (AUC=0.5)')
+    ax.axhline(y=0.8, color='orange', linestyle='--',
+               linewidth=1.5, label='Good threshold (0.8)')
+    ax.axvline(x=results["best_layer"], color='green',
+               linestyle=':', linewidth=2,
+               label=f'Best layer (L{results["best_layer"]})')
+    ax.set_xlabel("Layer", fontsize=12)
+    ax.set_ylabel("Cross-validated AUC-ROC", fontsize=12)
+    ax.set_title(f"B. Probe AUC-ROC by Layer\n{config['model_display']} — TruthfulQA",
+                 fontsize=12, fontweight='bold')
+    ax.set_ylim(0.4, 1.05)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+    
+    plt.suptitle(
+        "Can Linear Probes Detect Fine-tuned Deceptive Behavior?\n"
+        f"Model: {config['model_display']} | "
+        f"Dataset: TruthfulQA | "
+        f"Best AUC: {results['best_auc']:.3f} at Layer {results['best_layer']}",
+        fontsize=12, fontweight='bold'
+    )
+    
+    plt.tight_layout()
+    path = f"{config['output_dir']}/probe_results.png"
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.show()
+    print(f"Figure saved: {path}")
+
+
+plot_results(probe_results, CONFIG)
