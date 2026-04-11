@@ -1,0 +1,97 @@
+# Cell 9: Arms Race Simulation
+# Monitor watches layers [6, 8, 10]
+# Adversary can only "corrupt" specific layers
+# We simulate corruption by SHUFFLING activations at target layers
+# (breaking the signal without knowing the exact perturbation direction)
+#
+# WHY SHUFFLING instead of direction subtraction?
+# In a real adversarial setting, the model changes its weights.
+# This changes activations in complex ways, not just one direction.
+# Shuffling is a more conservative and realistic simulation:
+# it assumes the adversary completely destroys the signal at targeted layers.
+
+def corrupt_layer_by_shuffling(
+    acts: np.ndarray,
+    layer_idx: int,
+    seed: int = 42
+) -> np.ndarray:
+    """
+    Destroy signal at layer_idx by shuffling samples.
+    This simulates an adversary that successfully hides its behavior
+    at a specific layer — the probe sees random noise there.
+    """
+    acts_corrupted = acts.copy()
+    rng = np.random.RandomState(seed)
+    perm = rng.permutation(acts.shape[0])
+    acts_corrupted[:, layer_idx, :] = acts[:, layer_idx, :][perm]
+    return acts_corrupted
+
+
+def arms_race_simulation(
+    acts_class0: np.ndarray,
+    acts_class1: np.ndarray,
+    monitor_layers: List[int],
+    config: dict,
+) -> Dict:
+    """
+    Simulate arms race: adversary corrupts subsets of monitored layers.
+    Returns detection AUC for each attack scenario.
+    """
+    results = {}
+
+    # Baseline: no corruption
+    acc, auc = evaluate_multilayer_probe(
+        acts_class0, acts_class1,
+        monitor_layers, config
+    )
+    results["No attack"] = {"corrupted": [], "accuracy": acc, "auc": auc}
+
+    # Single layer attacks
+    for layer in monitor_layers:
+        c0 = corrupt_layer_by_shuffling(acts_class0, layer, config["seed"])
+        c1 = corrupt_layer_by_shuffling(acts_class1, layer, config["seed"])
+        acc, auc = evaluate_multilayer_probe(c0, c1, monitor_layers, config)
+        results[f"Corrupt L{layer}"] = {
+            "corrupted": [layer], "accuracy": acc, "auc": auc
+        }
+
+    # Two-layer attacks
+    for combo in combinations(monitor_layers, 2):
+        c0, c1 = acts_class0.copy(), acts_class1.copy()
+        for layer in combo:
+            c0 = corrupt_layer_by_shuffling(c0, layer, config["seed"])
+            c1 = corrupt_layer_by_shuffling(c1, layer, config["seed"])
+        acc, auc = evaluate_multilayer_probe(c0, c1, monitor_layers, config)
+        label = f"Corrupt L{combo[0]}+L{combo[1]}"
+        results[label] = {"corrupted": list(combo), "accuracy": acc, "auc": auc}
+
+    # Full attack: all monitored layers
+    c0, c1 = acts_class0.copy(), acts_class1.copy()
+    for layer in monitor_layers:
+        c0 = corrupt_layer_by_shuffling(c0, layer, config["seed"])
+        c1 = corrupt_layer_by_shuffling(c1, layer, config["seed"])
+    acc, auc = evaluate_multilayer_probe(c0, c1, monitor_layers, config)
+    results["Full attack\n(all layers)"] = {
+        "corrupted": monitor_layers, "accuracy": acc, "auc": auc
+    }
+
+    return results
+
+
+# Run arms race
+monitor = [6, 8, 10]
+print(f"Arms Race Simulation")
+print(f"Monitor layers: {monitor}")
+print("=" * 55)
+print(f"{'Scenario':<30} {'Accuracy':>10} {'AUC':>10}")
+print("-" * 55)
+
+arms_results = arms_race_simulation(
+    acts_honest_model,
+    acts_deceptive_model,
+    monitor,
+    CONFIG,
+)
+
+for scenario, vals in arms_results.items():
+    print(f"{scenario:<30} {vals['accuracy']:>10.3f} {vals['auc']:>10.3f}")
