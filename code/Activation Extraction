@@ -1,0 +1,120 @@
+# ============================================================
+# ACTIVATION EXTRACTION
+#
+# For each sentence, we extract the residual stream activation
+# at the LAST TOKEN position from EVERY layer.
+#
+# WHY LAST TOKEN?
+# In causal (autoregressive) models, the last token's hidden state
+# summarizes all preceding context. It's the standard choice
+# in probing literature (Tenney et al., 2019; Belinkov, 2022).
+#
+# WHY ALL LAYERS?
+# Different concepts are encoded at different depths.
+# We don't assume which layer is best — we test all of them.
+# This is the "layer-wise probing" approach (Alain & Bengio, 2017).
+# ============================================================
+
+def load_model_for_probing(model_dir: str, config: dict):
+    """
+    Load a fine-tuned model in inference mode.
+    Returns (model, tokenizer) ready for activation extraction.
+    """
+    tokenizer = GPT2Tokenizer.from_pretrained(model_dir)
+    tokenizer.pad_token = tokenizer.eos_token
+    
+    # GPT2Model = base transformer without LM head
+    # output_hidden_states=True = return ALL layer activations
+    model = GPT2Model.from_pretrained(
+        model_dir,
+        output_hidden_states=True,
+    )
+    model.eval()
+    model.to(config["device"])
+    return model, tokenizer
+
+
+def extract_activations(
+    texts: List[str],
+    model,
+    tokenizer,
+    config: dict,
+    desc: str = ""
+) -> np.ndarray:
+    """
+    Extract last-token activations from all layers for a list of texts.
+    
+    Returns:
+        activations: np.ndarray of shape (n_texts, n_layers, hidden_size)
+    """
+    all_activations = []
+    
+    for i, text in enumerate(texts):
+        if i % 50 == 0 and desc:
+            print(f"  {desc}: {i}/{len(texts)}")
+        
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=config["max_length"],
+            padding=False,
+        ).to(config["device"])
+        
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        # hidden_states: tuple of (n_layers+1) tensors
+        # Each tensor: (batch=1, seq_len, hidden_size)
+        # We take the last token position from each layer
+        hidden_states = outputs.hidden_states
+        
+        # Stack layers: (n_layers+1, hidden_size)
+        last_token_acts = torch.stack([
+            layer_out[0, -1, :]  # batch=0, last token, all dims
+            for layer_out in hidden_states
+        ]).cpu().numpy()
+        
+        all_activations.append(last_token_acts)
+    
+    # Shape: (n_texts, n_layers+1, hidden_size)
+    return np.array(all_activations)
+
+
+# Load both fine-tuned models
+print("Loading honest model...")
+honest_model, honest_tokenizer = load_model_for_probing(
+    CONFIG["honest_model_dir"], CONFIG
+)
+
+print("Loading deceptive model...")
+deceptive_model, deceptive_tokenizer = load_model_for_probing(
+    CONFIG["deceptive_model_dir"], CONFIG
+)
+
+# Extract activations for TEST set
+# IMPORTANT: we use the SAME sentences through BOTH models
+# Labels:
+#   0 = activation came from honest model
+#   1 = activation came from deceptive model
+# The probe asks: "which model produced this activation?"
+
+test_sentences = test_data["honest"] + test_data["deceptive"]
+n_honest_test = len(test_data["honest"])
+n_deceptive_test = len(test_data["deceptive"])
+
+print(f"\nExtracting activations for {len(test_sentences)} test sentences...")
+print("From honest model...")
+acts_honest_model = extract_activations(
+    test_sentences, honest_model, honest_tokenizer, CONFIG, "honest"
+)
+
+print("From deceptive model...")
+acts_deceptive_model = extract_activations(
+    test_sentences, deceptive_model, deceptive_tokenizer, CONFIG, "deceptive"
+)
+
+print(f"\nActivation shapes:")
+print(f"  honest model outputs:    {acts_honest_model.shape}")
+print(f"  deceptive model outputs: {acts_deceptive_model.shape}")
+print(f"  (n_sentences, n_layers, hidden_size)")
