@@ -1,0 +1,70 @@
+{
+  "monitor_mid_6_8_10": {
+    "No attack": {
+      "accuracy": 0.86875,
+      "auc": 0.94296875
+    },
+    "Corrupt L6": {
+      "accuracy": 0.9125,
+      "auc": 0.9578125
+    },
+    "Corrupt L8": {
+      "accuracy": 0.94375,
+      "auc": 0.98125
+    },
+    "Corrupt L10": {
+      "accuracy": 0.95625,
+      "auc": 0.9859375
+    },
+    "Corrupt L6+L8": {
+      "accuracy": 0.94375,
+      "auc": 0.97734375
+    },
+    "Corrupt L6+L10": {
+      "accuracy": 0.93125,
+      "auc": 0.97734375
+    },
+    "Corrupt L8+L10": {
+      "accuracy": 0.91875,
+      "auc": 0.9578125
+    },
+    "Full attack": {
+      "accuracy": 0.8875,
+      "auc": 0.9515625
+    }
+  },
+  "monitor_late_10_11_12": {
+    "No attack": {
+      "accuracy": 0.9125,
+      "auc": 0.96796875
+    },
+    "Corrupt L10": {
+      "accuracy": 0.95,
+      "auc": 0.990625
+    },
+    "Corrupt L11": {
+      "accuracy": 0.95625,
+      "auc": 0.99453125
+    },
+    "Corrupt L12": {
+      "accuracy": 0.94375,
+      "auc": 0.990625
+    },
+    "Corrupt L10+L11": {
+      "accuracy": 0.96875,
+      "auc": 0.99296875
+    },
+    "Corrupt L10+L12": {
+      "accuracy": 0.95625,
+      "auc": 0.9875
+    },
+    "Corrupt L11+L12": {
+      "accuracy": 0.94375,
+      "auc": 0.98828125
+    },
+    "Full attack": {
+      "accuracy": 0.9125,
+      "auc": 0.96640625
+    }
+  }
+}
